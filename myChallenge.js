@@ -1,14 +1,14 @@
-const csv = require('csv-parse');
 const fs = require('fs');
 const { finished } = require('stream/promises');
 const { format } = require('@fast-csv/format');
+const csvtojson = require("csvtojson");
 
 //fetch the filepath from arguments parameter
 var filePath = process.argv[2];
 
 let activities = [];
 const records = [];
-var arrToErite = [];
+var arrToWrite = [];
 
 //output file to store the result
 const fileName = 'output.csv';
@@ -16,17 +16,32 @@ const fileName = 'output.csv';
 //processFile function will take the file path from parameter argvs and using csv_parse, it will parse and 
 // push the date into records.
 const processFile = async () => {
-  const parser = fs.createReadStream(filePath).pipe(
-    csv.parse({ columns: true, relax_quotes: true, escape: '\\', ltrim: true, rtrim: true })
-  )
 
-  parser.on('readable', function () {
-    let record;
-    while ((record = parser.read()) !== null) {
-      records.push(record);
-    }
-  });
-  await finished(parser);
+  let fileReadStream = fs.createReadStream(filePath);
+  let invalidLineCount = 0;
+  csvtojson({ "delimiter": ",", "output": "default", "fork": true })
+    .preFileLine((fileLineString, lineIdx) => {
+      let invalidLinePattern = /^['"].*[^"'];/;
+      if (invalidLinePattern.test(fileLineString)) {
+        console.log(`Line #${lineIdx + 1} is invalid, skipping:`, fileLineString);
+        fileLineString = "";
+        invalidLineCount++;
+      }
+      return fileLineString
+    })
+    .fromStream(fileReadStream)
+    .subscribe((dataObj) => {
+      records.push(dataObj);
+    },
+      (err) => {
+        console.error("Error:", err);
+      },
+      (success) => {
+        // console.log("Skipped lines:", invalidLineCount);
+        // console.log("Success");
+      });
+
+  await finished(fileReadStream);
   return records
 }
 
@@ -39,7 +54,7 @@ var isSquare = function (n) {
 // display() function will push the final result into array.
 function display(m) {
   for (let l of m)
-    arrToErite.push(l.join())
+    arrToWrite.push(l.join())
 }
 
 
@@ -65,11 +80,6 @@ function simpleArraySum(ar) {
   }
   return sum;
 }
-
-var array1 = [];
-var array2 = [];
-var array3 = [];
-
 
 // CSVtoArray() function will convert comma seperated values from csv stream into array.
 function CSVtoArray(text) {
@@ -106,7 +116,7 @@ function CSVtoArray(text) {
   //e.g. if metric=3 then 3*3 square.
   var metric = Math.sqrt(listNum.length);
 
-//Usecase 1: If the list of numbers forms a square?
+  //Usecase 1: If the list of numbers forms a square?
   if (isSquare(listNum.length)) {
 
     //Usecase 2: If the array has only one element then it will always form a sqare, so result will be written to output.csv
@@ -122,79 +132,60 @@ function CSVtoArray(text) {
       for (i = 0; i < noOfRows; i++) {
         randoms.push({
           id: activities[0].id,
-          json: listNum,
-          is_valid: isSquare(listNum.length)
+          json: "[" + listNum + "]",
+          is_valid: 'true'
         });
         stream.write(randoms[i]);
       }
 
       stream.end();
-
+      console.log("output.csv is generated inside project directory.");
     }
 
     //Usecase 3: If the array has more than one elements
-    else if(listNum.length > 1){
+    else if (listNum.length > 1) {
 
       //Form the square metric based on the list of numbers:
-      for (var i = 0; i < metric; i++) {
-        if (listNum[i] !== "") {
-          array1.push(listNum[i]);
+
+      let numOfRows = metric;
+      var count = 0;
+      var index = 0;
+      var squares = new Array();
+
+      for (var i = 0; i < numOfRows; i++) {
+
+        squares[i] = new Array();
+        for (var j = count; j < metric + index; j++) {
+          squares[i].push(listNum[j]);
+
         }
+        count = j;
+        index = j;
       }
-      if (metric <= metric + metric) {
-        for (var j = metric; j < metric + metric; j++) {
-          if (listNum[j] !== "") {
-            array2.push(listNum[j]);
-          }
-        }
-      }
-  
-  
-      for (var k = metric + metric; k < listNum.length; k++) {
-  
-        if (listNum[k] != "") {
-          array3.push(listNum[k]);
-        }
-      }
-  
-      //Final creation of square metric:
-      var final = [];
-  
-      if (array1.length) {
-        final.push(array1);
-      }
-      if (array2.length) {
-        final.push(array2);
-      }
-      if (array3.length) {
-        final.push(array3);
-      }
-  
+
+      console.log("Generated square metric:");
+      console.log(squares);
 
       //After creating the square metric, need to find the sides.
-      var side1 = simpleArraySum(array1);
-      if (array2.length) {
-        var side4 = simpleArraySum(array2);
-      }
-      if (array3.length) {
-        var side4 = simpleArraySum(array3);
-      }
-  
+
+      var side1 = simpleArraySum(squares[0]);
+      var side4 = simpleArraySum(squares[metric - 1]);
+
       var side2 = 0;
       var side3 = 0;
       for (var index = 1; index < metric - 1; index++) {
-        side2 = side2 + final[index][0];
-        side3 = side3 + final[index][metric - 1];
+        side2 = side2 + squares[index][0];
+        side3 = side3 + squares[index][metric - 1];
       }
-  
+
       var squareEdgeLength = side1 + side2 + side3 + side4;
 
       //Usecase 4: If the square edge length is even then shift the values in the clockwise direction.
       if (squareEdgeLength % 2 == 0) {
-        let m1 = [final];
+        let m1 = [squares];
         display(m1);
-        for (let a = 0, b = final.length - 1; b > a; a++ , b--) {
-          rotate(final, a, a, b, b);
+        for (let a = 0, b = squares.length - 1; b > a; a++ , b--) {
+          rotate(squares, a, a, b, b);
         }
         display(m1);
         const csvFile = fs.createWriteStream(fileName);
@@ -204,22 +195,23 @@ function CSVtoArray(text) {
         const min = 1;
         const max = 90000;
         const noOfRows = 1;
-  
+
         for (i = 0; i < noOfRows; i++) {
           randoms.push({
             id: activities[0].id,
-            json: "[" + arrToErite[1] + "]",
+            json: "[" + arrToWrite[1] + "]",
             is_valid: isSquare(listNum.length)
           });
           stream.write(randoms[i]);
         }
-  
+
         stream.end();
-  
+        console.log("output.csv is generated inside project directory.");
+
       }
-      
+
       //Usecase 4: If the square edge length is odd and there is a singular field in the middle of
-                  //the table, it is not moved 
+      //the table, it is not moved 
       else {
         const csvFile = fs.createWriteStream(fileName);
         const stream = format({ headers: true });
@@ -228,43 +220,42 @@ function CSVtoArray(text) {
         const min = 1;
         const max = 90000;
         const noOfRows = 1;
-  
+
         for (i = 0; i < noOfRows; i++) {
           randoms.push({
             id: activities[0].id,
-            json: listNum,
-            is_valid: isSquare(listNum.length)
+            json: "[" + listNum + "]",
+            is_valid: 'false'
           });
           stream.write(randoms[i]);
         }
-  
-          stream.end();
-  
-      }    
-    } 
+
+        stream.end();
+        console.log("output.csv is generated inside project directory.");
+
+      }
+    }
   }
 
-//Usecase 5: If the list of numbers does not form a square. Then it will write the result with empty array inside output.csv
-  else{
+  //Usecase 5: If the list of numbers does not form a square. Then it will write the result with empty array inside output.csv
+  else {
     const csvFile = fs.createWriteStream(fileName);
     const stream = format({ headers: true });
     stream.pipe(csvFile);
     let randoms = [];
-    const min = 1;
-    const max = 90000;
     const noOfRows = 1;
-    
 
     for (i = 0; i < noOfRows; i++) {
       randoms.push({
         id: activities[0].id,
         json: "'[]'",
-        is_valid: isSquare(listNum.length)
+        is_valid: 'false'
       });
       stream.write(randoms[i]);
     }
 
     stream.end();
+    console.log("output.csv is generated inside project directory.");
   }
 
 })()
